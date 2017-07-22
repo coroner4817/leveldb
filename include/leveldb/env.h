@@ -28,6 +28,8 @@ class SequentialFile;
 class Slice;
 class WritableFile;
 
+// YW - abstract class with pure virtual functions need to inplemented.
+// An implemented instance can be seed at env_prosix.cc: PosixEnv
 class Env {
  public:
   Env() { }

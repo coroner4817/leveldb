@@ -34,6 +34,12 @@ class Random {
     uint64_t product = seed_ * A;
 
     // Compute (product % M) using the fact that ((x << 31) % M) == x.
+
+    // YW - can consider this mod as 2 parts:
+    // 1, since divide 2^31-1 so right shift 31 then the rest value are how many 1 res for each 2^31-1
+    // 2, the normal res for the right part. 
+    // This is limited to the product valve that is smaller than (2^31)*(2^31-1). or will generate res larger than M.
+    // the happening probility is 2/64; 
     seed_ = static_cast<uint32_t>((product >> 31) + (product & M));
     // The first reduction may overflow by 1 bit, so we may need to
     // repeat.  mod == M is not possible; using > allows the faster

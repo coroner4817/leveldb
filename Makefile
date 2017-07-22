@@ -7,6 +7,7 @@
 # to switch between compilation modes.
 
 # (A) Production use (optimized mode)
+# YW - ?= will assign value to OPT only when OPT is NULL
 OPT ?= -O2 -DNDEBUG
 # (B) Debug mode, w/ full line-level debugging symbols
 # OPT ?= -g2
@@ -53,6 +54,7 @@ UTILS = \
 	db/leveldbutil
 
 # Put the object files in a subdirectory, but the application at the top of the object dir.
+# YW - notdir remove the dir part of each file directory and leave only the file name 
 PROGNAMES := $(notdir $(TESTS) $(UTILS))
 
 # On Linux may need libkyotocabinet-dev for dependency.
@@ -80,10 +82,16 @@ STATIC_OUTDIR=out-ios-universal
 else
 STATIC_OUTDIR=out-static
 SHARED_OUTDIR=out-shared
+# YW - difference between = and :=
+# when use = the varable after all the parameters are settled after running the whole makefile
+# when use := the varible is assigned at the current position regarding to what the value of the parameters currently is
+# http://www.cnblogs.com/wanqieddy/archive/2011/09/21/2184257.html
 STATIC_PROGRAMS := $(addprefix $(STATIC_OUTDIR)/, $(PROGNAMES))
 SHARED_PROGRAMS := $(addprefix $(SHARED_OUTDIR)/, db_bench)
 endif
 
+# YW - addprefix add new dir prefix to the file
+# .cc=.o replace the .cc to .o
 STATIC_LIBOBJECTS := $(addprefix $(STATIC_OUTDIR)/, $(SOURCES:.cc=.o))
 STATIC_MEMENVOBJECTS := $(addprefix $(STATIC_OUTDIR)/, $(MEMENV_SOURCES:.cc=.o))
 
@@ -99,12 +107,15 @@ SHARED_MEMENVOBJECTS := $(addprefix $(SHARED_OUTDIR)/, $(MEMENV_SOURCES:.cc=.o))
 TESTUTIL := $(STATIC_OUTDIR)/util/testutil.o
 TESTHARNESS := $(STATIC_OUTDIR)/util/testharness.o $(TESTUTIL)
 
+# YW - addsuffix: add suffix like file extenstion 
 STATIC_TESTOBJS := $(addprefix $(STATIC_OUTDIR)/, $(addsuffix .o, $(TESTS)))
 STATIC_UTILOBJS := $(addprefix $(STATIC_OUTDIR)/, $(addsuffix .o, $(UTILS)))
 STATIC_ALLOBJS := $(STATIC_LIBOBJECTS) $(STATIC_MEMENVOBJECTS) $(STATIC_TESTOBJS) $(STATIC_UTILOBJS) $(TESTHARNESS)
 DEVICE_ALLOBJS := $(DEVICE_LIBOBJECTS) $(DEVICE_MEMENVOBJECTS)
 SIMULATOR_ALLOBJS := $(SIMULATOR_LIBOBJECTS) $(SIMULATOR_MEMENVOBJECTS)
 
+# YW - all is the dependency of default
+# so everytime run make, make only execute if the dependency files has been updated
 default: all
 
 # Should we build shared libraries?
@@ -127,6 +138,9 @@ SHARED_LIB1 = libleveldb.$(PLATFORM_SHARED_EXT)
 SHARED_LIB2 = $(SHARED_LIB1).$(SHARED_VERSION_MAJOR)
 SHARED_LIB3 = $(SHARED_LIB1).$(SHARED_VERSION_MAJOR).$(SHARED_VERSION_MINOR)
 SHARED_LIBS = $(SHARED_OUTDIR)/$(SHARED_LIB1) $(SHARED_OUTDIR)/$(SHARED_LIB2) $(SHARED_OUTDIR)/$(SHARED_LIB3)
+
+# YW - use ln to link two files with soft symbolic link (-s) and (-f) to force create the linked file directory
+# use soft link so that the linked file will update with the original file
 $(SHARED_OUTDIR)/$(SHARED_LIB1): $(SHARED_OUTDIR)/$(SHARED_LIB3)
 	ln -fs $(SHARED_LIB3) $(SHARED_OUTDIR)/$(SHARED_LIB1)
 $(SHARED_OUTDIR)/$(SHARED_LIB2): $(SHARED_OUTDIR)/$(SHARED_LIB3)
@@ -139,10 +153,15 @@ $(SHARED_OUTDIR)/$(SHARED_LIB3): $(SHARED_LIBOBJECTS)
 
 endif  # PLATFORM_SHARED_EXT
 
+# YW - $(STATIC_PROGRAMS) is a list of objects to be built, they are listed bellow as out-static/autocompact_test, etc.
+# all is depends on all those make objects
 all: $(SHARED_LIBS) $(SHARED_PROGRAMS) $(STATIC_OUTDIR)/libleveldb.a $(STATIC_OUTDIR)/libmemenv.a $(STATIC_PROGRAMS)
 
+# YW - check is depends on the STATIC_PROGRAMs objects and the for loop is ended with done
 check: $(STATIC_PROGRAMS)
 	for t in $(notdir $(TESTS)); do echo "***** Running $$t"; $(STATIC_OUTDIR)/$$t || exit 1; done
+
+bench: $(STATIC_OUTDIR)/db_bench_sqlite3 $(STATIC_OUTDIR)/db_bench
 
 clean:
 	-rm -rf out-static out-shared out-ios-x86 out-ios-arm out-ios-universal
@@ -152,9 +171,11 @@ clean:
 $(STATIC_OUTDIR):
 	mkdir $@
 
+# YW - | means determine whether STATIC_OURDIR has been make or not if not execute that
 $(STATIC_OUTDIR)/db: | $(STATIC_OUTDIR)
 	mkdir $@
 
+# YW - -p means create a intermediate folder and no error will report if already exist 
 $(STATIC_OUTDIR)/helpers/memenv: | $(STATIC_OUTDIR)
 	mkdir -p $@
 
@@ -167,6 +188,8 @@ $(STATIC_OUTDIR)/table: | $(STATIC_OUTDIR)
 $(STATIC_OUTDIR)/util: | $(STATIC_OUTDIR)
 	mkdir $@
 
+# YW - .PHONY is to avoid the situation that having a file which have name STATIC_OBJDIRS
+# can use \ to concate multiple lines and ues ; to terminate the lines
 .PHONY: STATIC_OBJDIRS
 STATIC_OBJDIRS: \
 	$(STATIC_OUTDIR)/db \
@@ -175,6 +198,7 @@ STATIC_OBJDIRS: \
 	$(STATIC_OUTDIR)/util \
 	$(STATIC_OUTDIR)/helpers/memenv
 
+# YW - $@ stand for the target name, here stand for STATIC_OBJDIRS
 $(SHARED_OUTDIR):
 	mkdir $@
 
@@ -259,6 +283,7 @@ $(SIMULATOR_ALLOBJS): | SIMULATOR_OBJDIRS
 $(SHARED_ALLOBJS): | SHARED_OBJDIRS
 
 ifeq ($(PLATFORM), IOS)
+# YW - build rule for the IOS
 $(DEVICE_OUTDIR)/libleveldb.a: $(DEVICE_LIBOBJECTS)
 	rm -f $@
 	$(AR) -rs $@ $(DEVICE_LIBOBJECTS)
@@ -283,6 +308,9 @@ $(STATIC_OUTDIR)/libleveldb.a: $(STATIC_OUTDIR) $(DEVICE_OUTDIR)/libleveldb.a $(
 $(STATIC_OUTDIR)/libmemenv.a: $(STATIC_OUTDIR) $(DEVICE_OUTDIR)/libmemenv.a $(SIMULATOR_OUTDIR)/libmemenv.a
 	lipo -create $(DEVICE_OUTDIR)/libmemenv.a $(SIMULATOR_OUTDIR)/libmemenv.a -output $@
 else
+# YW - build rules for common use
+# So .a static lib file is bascially archive file which contain a lot of .o files
+# here use ar to compress all the .o object files to the archive file
 $(STATIC_OUTDIR)/libleveldb.a:$(STATIC_LIBOBJECTS)
 	rm -f $@
 	$(AR) -rs $@ $(STATIC_LIBOBJECTS)

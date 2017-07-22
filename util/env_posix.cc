@@ -35,7 +35,9 @@ static int open_read_only_file_limit = -1;
 static int mmap_limit = -1;
 
 static Status PosixError(const std::string& context, int err_number) {
+  // YW - No such file or directory error 
   if (err_number == ENOENT) {
+    // YW - strerror: return a specific reason of the error
     return Status::NotFound(context, strerror(err_number));
   } else {
     return Status::IOError(context, strerror(err_number));
@@ -423,6 +425,7 @@ class PosixEnv : public Env {
 
   virtual Status DeleteFile(const std::string& fname) {
     Status result;
+    // YW - unlink: delete a filename from the filesys
     if (unlink(fname.c_str()) != 0) {
       result = PosixError(fname, errno);
     }
@@ -432,6 +435,7 @@ class PosixEnv : public Env {
   virtual Status CreateDir(const std::string& name) {
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
+      // YW - errno is for peeking the last error, no need to initialize
       result = PosixError(name, errno);
     }
     return result;
@@ -504,10 +508,14 @@ class PosixEnv : public Env {
   virtual void StartThread(void (*function)(void* arg), void* arg);
 
   virtual Status GetTestDirectory(std::string* result) {
+    // YW - getenv: try to get the environment variable with name TEST_TMPDIR, which may not exist
     const char* env = getenv("TEST_TMPDIR");
     if (env && env[0] != '\0') {
       *result = env;
     } else {
+      // YW - snprintf: write the data into the buffer follow the format
+      // geteuid: get the user id of this process
+      // in all will generate a dir string like /tmp/leveldbtest-501
       char buf[100];
       snprintf(buf, sizeof(buf), "/tmp/leveldbtest-%d", int(geteuid()));
       *result = buf;
@@ -691,7 +699,13 @@ void EnvPosixTestHelper::SetReadOnlyMMapLimit(int limit) {
   mmap_limit = limit;
 }
 
+// YW - thread are share memories. so this default env static variable can be accessed by any thread
+// the pthread_once is to initial the routine at first call
+// here init the default_env so that all other thread in the future call will access the same object
+// static pthread_once_t is for counting the time of the Init_func call. if larger than one then won't launch the function pointer
+// but directly return the initialized object: default_env
 Env* Env::Default() {
+  // YW - the function pointer can be called as this or &InitDefaultEnv
   pthread_once(&once, InitDefaultEnv);
   return default_env;
 }

@@ -9,6 +9,7 @@
 namespace leveldb {
 
 const char* Status::CopyState(const char* state) {
+  // YW - get the overall state_ size (size + 5) and copy them all
   uint32_t size;
   memcpy(&size, state, sizeof(size));
   char* result = new char[size + 5];
@@ -17,6 +18,10 @@ const char* Status::CopyState(const char* state) {
 }
 
 Status::Status(Code code, const Slice& msg, const Slice& msg2) {
+  // YW  - generate the state_ following the rule of   
+  //    state_[0..3] == length of message
+  //    state_[4]    == code
+  //    state_[5..]  == message
   assert(code != kOk);
   const uint32_t len1 = msg.size();
   const uint32_t len2 = msg2.size();
@@ -65,6 +70,10 @@ std::string Status::ToString() const {
         break;
     }
     std::string result(type);
+
+    // YW - copy the length of the actual status message
+    // the first four byte of the state_ is length, 5th byte is the error code
+    // So later when concatenate the actual error message should have offset of 5 
     uint32_t length;
     memcpy(&length, state_, sizeof(length));
     result.append(state_ + 5, length);

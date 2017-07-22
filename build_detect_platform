@@ -25,8 +25,11 @@
 #       -DSNAPPY                     if the Snappy library is present
 #
 
+# YW - $0 represent the program itself
+# $1,2.. represent the parameter passed through command
 OUTPUT=$1
 PREFIX=$2
+# YW - test -z: test whether the string size is 0
 if test -z "$OUTPUT" || test -z "$PREFIX"; then
   echo "usage: $0 <output-filename> <directory_prefix>" >&2
   exit 1
@@ -53,6 +56,7 @@ if test -z "$TARGET_OS"; then
     TARGET_OS=`uname -s`
 fi
 
+# YW - clean the variables
 COMMON_FLAGS=
 CROSS_COMPILE=
 PLATFORM_CCFLAGS=
@@ -64,11 +68,16 @@ PLATFORM_SHARED_LDFLAGS="-shared -Wl,-soname -Wl,"
 PLATFORM_SHARED_CFLAGS="-fPIC"
 PLATFORM_SHARED_VERSIONED=true
 PLATFORM_SSEFLAGS=
-
 MEMCMP_FLAG=
+
 if [ "$CXX" = "g++" ]; then
     # Use libc's memcmp instead of GCC's memcmp.  This results in ~40%
     # performance improvement on readrandom under gcc 4.4.3 on Linux/x86.
+
+    # YW - -fno-builtin means that ignore the builtin functions with __builtin_ prefix 
+    # and GCC compiler won't know any internal infornamtion and won't convert it to inline
+    # https://gcc.gnu.org/onlinedocs/gcc/C-Dialect-Options.html
+    # but according on my test, the builtin memcpy is much faster than the libc version
     MEMCMP_FLAG="-fno-builtin-memcmp"
 fi
 
@@ -84,7 +93,12 @@ case "$TARGET_OS" in
         PLATFORM=OS_MACOSX
         COMMON_FLAGS="$MEMCMP_FLAG -DOS_MACOSX"
         PLATFORM_SHARED_EXT=dylib
+        # YW - test if INSTALL_PATH exist if not set to pwd
+        # notice that when assign variable, must have no space between variable and =
         [ -z "$INSTALL_PATH" ] && INSTALL_PATH=`pwd`
+        # YW - dynamiclib option is for compile a dynamic lib on MacOS
+        # install_name is for change the install name of a dynamic library at link-time
+        # otool -L libfun.dylib
         PLATFORM_SHARED_LDFLAGS="-dynamiclib -install_name $INSTALL_PATH/"
         PORT_FILE=port/port_posix.cc
         PORT_SSE_FILE=port/port_posix_sse.cc
@@ -170,10 +184,18 @@ esac
 # prune take effect.
 DIRS="$PREFIX/db $PREFIX/util $PREFIX/table"
 
+# YW - find all the compile cc file exclude the test and useless
+# turn off the globbing 
 set -f # temporarily disable globbing so that our patterns aren't expanded
+
+# YW - prune is use to remove the file and -o is to output the removed result to the next cmd
 PRUNE_TEST="-name *test*.cc -prune"
 PRUNE_BENCH="-name *_bench.cc -prune"
 PRUNE_TOOL="-name leveldbutil.cc -prune"
+
+# YW - sed is a stream editor, you can edit the char stream
+# tr can apply some cast(like lower case to upper case) to the char stream
+# regex: http://tldp.org/LDP/GNU-Linux-Tools-Summary/html/x11655.htm
 PORTABLE_FILES=`find $DIRS $PRUNE_TEST -o $PRUNE_BENCH -o $PRUNE_TOOL -o -name '*.cc' -print | sort | sed "s,^$PREFIX/,," | tr "\n" " "`
 
 set +f # re-enable globbing
@@ -187,14 +209,21 @@ if [ "$CROSS_COMPILE" = "true" ]; then
     # Cross-compiling; do not try any compilation tests.
     true
 else
+    # YW - $$ is the process id
     CXXOUTPUT="${TMPDIR}/leveldb_build_detect_platform-cxx.$$"
 
     # If -std=c++0x works, use <atomic> as fallback for when memory barriers
     # are not available.
+    # YW - try to use g++ to compile a test program to see if the header works
+    # -x specific the language
+    # 2>/dev/null is a output buffer for garbage
+    # the following c code is for compile
+    # TODO: understand the -, seems that in order to compile the string source code have to add the - 
     $CXX $CXXFLAGS -std=c++0x -x c++ - -o $CXXOUTPUT 2>/dev/null  <<EOF
       #include <atomic>
       int main() {}
 EOF
+    # YW - $? contain the return value of the last command, 0 means return without error
     if [ "$?" = 0 ]; then
         COMMON_FLAGS="$COMMON_FLAGS -DLEVELDB_PLATFORM_POSIX -DLEVELDB_ATOMIC_PRESENT"
         PLATFORM_CXXFLAGS="-std=c++0x"

@@ -107,6 +107,7 @@ inline
 static void WalCheckpoint(sqlite3* db_) {
   // Flush all writes to disk
   if (FLAGS_WAL_enabled) {
+    // YW - set flush all the wal files to the actual DB
     sqlite3_wal_checkpoint_v2(db_, NULL, SQLITE_CHECKPOINT_FULL, NULL, NULL);
   }
 }
@@ -115,6 +116,9 @@ namespace leveldb {
 
 // Helper for quickly generating random data.
 namespace {
+// YW - generate random number but have limits:
+// 1, everytime call after initial, the number generated are the same sequence
+// 2, the generated method limit to the product value due to the fancy mod algo
 class RandomGenerator {
  private:
   std::string data_;
@@ -146,6 +150,8 @@ class RandomGenerator {
   }
 };
 
+// YW - trim the space at the front and the end 
+// deep cpy
 static Slice TrimSpace(Slice s) {
   int start = 0;
   while (start < s.size() && isspace(s[start])) {
@@ -238,6 +244,7 @@ class Benchmark {
   }
 
   void Start() {
+    // YW - get start system time
     start_ = Env::Default()->NowMicros() * 1e-6;
     bytes_ = 0;
     message_.clear();
@@ -439,6 +446,7 @@ class Benchmark {
     char cache_size[100];
     snprintf(cache_size, sizeof(cache_size), "PRAGMA cache_size = %d",
              FLAGS_num_pages);
+    // YW - exec a SQL cmd to set the page num cahce to 4096 and each page is 1kb
     status = sqlite3_exec(db_, cache_size, NULL, NULL, &err_msg);
     ExecErrorCheck(status, err_msg);
 
@@ -452,6 +460,10 @@ class Benchmark {
     }
 
     // Change journal mode to WAL if WAL enabled flag is on
+    // YW - original journal mode is the deafult mode, which will backup the whole db periodically in a separate directory
+    // When WAL mode is on, the commit to the db don't directly goto db but goto WAL files first
+    // then at some certain checkpoint those WAL changes will be wrote into db
+    // this save more IO and and write to WAL files doesn;t block the read process to the original DB
     if (FLAGS_WAL_enabled) {
       std::string WAL_stmt = "PRAGMA journal_mode = WAL";
 
@@ -464,7 +476,9 @@ class Benchmark {
     }
 
     // Change locking mode to exclusive and create tables/index for database
+    // YW - locking_stmt: a mutex lock to lock the db for writing
     std::string locking_stmt = "PRAGMA locking_mode = EXCLUSIVE";
+    // YW - SQl cmd to init the DB
     std::string create_stmt =
           "CREATE TABLE test (key blob, value blob, PRIMARY KEY(key))";
     std::string stmt_array[] = { locking_stmt, create_stmt };
@@ -475,6 +489,7 @@ class Benchmark {
     }
   }
 
+  // YW - handle all kinds of write operations
   void Write(bool write_sync, Order order, DBState state,
              int num_entries, int value_size, int entries_per_batch) {
     // Create new database if state == FRESH
@@ -510,6 +525,9 @@ class Benchmark {
     ExecErrorCheck(status, err_msg);
 
     // Preparing sqlite3 statements
+    // YW - sqlite prepare is like generate a TF computing graph and later use
+    // sqlite_bind to feed in data
+    // the actual sequence is 1, begin 2, zSql 3, end
     status = sqlite3_prepare_v2(db_, replace_str.c_str(), -1,
                                 &replace_stmt, NULL);
     ErrorCheck(status);
@@ -524,14 +542,17 @@ class Benchmark {
     for (int i = 0; i < num_entries; i += entries_per_batch) {
       // Begin write transaction
       if (FLAGS_transaction && transaction) {
+        // YW - evaulate and exec the zSql
         status = sqlite3_step(begin_trans_stmt);
         StepErrorCheck(status);
+        // YW - reset the stmt state to init to enable revoke again
         status = sqlite3_reset(begin_trans_stmt);
         ErrorCheck(status);
       }
 
       // Create and execute SQL statements
       for (int j = 0; j < entries_per_batch; j++) {
+        // YW - generate the blob
         const char* value = gen_.Generate(value_size).data();
 
         // Create values for key-value pair
@@ -540,7 +561,8 @@ class Benchmark {
         char key[100];
         snprintf(key, sizeof(key), "%016d", k);
 
-        // Bind KV values into replace_stmt
+        // Bind KV values into replace_stmt 
+        // YW - replace the keyword in the zSql to the string stream of blob
         status = sqlite3_bind_blob(replace_stmt, 1, key, 16, SQLITE_STATIC);
         ErrorCheck(status);
         status = sqlite3_bind_blob(replace_stmt, 2, value,
@@ -570,6 +592,7 @@ class Benchmark {
       }
     }
 
+    // YW - use finalize to delete a prepared stmt
     status = sqlite3_finalize(replace_stmt);
     ErrorCheck(status);
     status = sqlite3_finalize(begin_trans_stmt);
@@ -646,6 +669,7 @@ class Benchmark {
     ErrorCheck(status);
   }
 
+  // YW - sequentially read the whole db
   void ReadSequential() {
     int status;
     sqlite3_stmt *pStmt;
@@ -654,6 +678,7 @@ class Benchmark {
     status = sqlite3_prepare_v2(db_, read_str.c_str(), -1, &pStmt, NULL);
     ErrorCheck(status);
     for (int i = 0; i < reads_ && SQLITE_ROW == sqlite3_step(pStmt); i++) {
+      // YW - sqlite3_column_bytes return the size of the data
       bytes_ += sqlite3_column_bytes(pStmt, 1) + sqlite3_column_bytes(pStmt, 2);
       FinishedSingleOp();
     }
@@ -674,6 +699,7 @@ int main(int argc, char** argv) {
     char junk;
     if (leveldb::Slice(argv[i]).starts_with("--benchmarks=")) {
       FLAGS_benchmarks = argv[i] + strlen("--benchmarks=");
+      // YW - sscanf: parse the string as the format
     } else if (sscanf(argv[i], "--histogram=%d%c", &n, &junk) == 1 &&
                (n == 0 || n == 1)) {
       FLAGS_histogram = n;
@@ -707,6 +733,7 @@ int main(int argc, char** argv) {
 
   // Choose a location for the test database if none given with --db=<path>
   if (FLAGS_db == NULL) {
+      // YW - Env::Default() access the static varible of env. cannot be deleted, managed by the context.
       leveldb::Env::Default()->GetTestDirectory(&default_db_path);
       default_db_path += "/dbbench";
       FLAGS_db = default_db_path.c_str();

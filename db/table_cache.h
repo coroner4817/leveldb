@@ -16,6 +16,9 @@
 
 namespace leveldb {
 
+// YW - forward declaration of class. The env.h header is include in the cpp file
+// Since forward declare, and we have no information of this class at this time,
+// we can only use the pointer of the class and we cannot access any function of it.
 class Env;
 
 class TableCache {

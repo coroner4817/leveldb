@@ -18,6 +18,12 @@
 
 namespace leveldb {
 
+// YW - wrote in the fushion of singleton: https://stackoverflow.com/a/1008289/4812471
+// this can save memory instead of use too much static memory
+// because the Status is limited to several type and everytime we access them statically
+// So that instead of construct a new Status we will return the one in the Static memory with same error type
+// This can save memory usage in this scenerio. The static memory will be released when process terminated
+// But in other case like everytime construct diff objects, might cause using too much Static memory
 class Status {
  public:
   // Create a success status.
@@ -91,10 +97,14 @@ class Status {
     return (state_ == NULL) ? kOk : static_cast<Code>(state_[4]);
   }
 
+  // YW - actual constructor
   Status(Code code, const Slice& msg, const Slice& msg2);
   static const char* CopyState(const char* s);
 };
 
+// YW - need to override the copy constructor to deepcpy to make sure each singleton is hold by only one static memory
+// this is basic rule of singleton but I don't really see a benefit of using it here for sack of Status not CEO
+// If rm this two will become shallow cpy and might cause the state_ be released twice
 inline Status::Status(const Status& s) {
   state_ = (s.state_ == NULL) ? NULL : CopyState(s.state_);
 }
