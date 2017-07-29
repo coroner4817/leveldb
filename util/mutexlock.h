@@ -19,9 +19,12 @@ namespace leveldb {
 //     MutexLock l(&mu_);       // mu_ is an instance variable
 //     ... some complex code, possibly with multiple return paths ...
 //   }
-
+// YW - just like c++11 std::lock_guard, release mutex when out of scope
+// RAII: https://zh.wikipedia.org/wiki/RAII
 class SCOPED_LOCKABLE MutexLock {
  public:
+  // YW - explicit means that when constrcut using this construtor, we can only use this explicit format
+  // cannot implicit construct this class with this constructor
   explicit MutexLock(port::Mutex *mu) EXCLUSIVE_LOCK_FUNCTION(mu)
       : mu_(mu)  {
     this->mu_->Lock();
@@ -31,6 +34,7 @@ class SCOPED_LOCKABLE MutexLock {
  private:
   port::Mutex *const mu_;
   // No copying allowed
+  // YW - to supress copy we can set those functions private
   MutexLock(const MutexLock&);
   void operator=(const MutexLock&);
 };

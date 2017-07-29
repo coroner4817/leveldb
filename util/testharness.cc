@@ -18,9 +18,12 @@ struct Test {
   const char* name;
   void (*func)();
 };
+// YW - std::vector pointer, pointer is static memory but the content is on TODO: heap?
+// and when program died at end the static vector pointer is deconstructed, the content will also automatically released
 std::vector<Test>* tests;
 }
 
+// YW - register a test func into the vector
 bool RegisterTest(const char* base, const char* name, void (*func)()) {
   if (tests == NULL) {
     tests = new std::vector<Test>;
@@ -44,11 +47,13 @@ int RunAllTests() {
         std::string name = t.base;
         name.push_back('.');
         name.append(t.name);
+        // YW - if there is no match between matcher and name, will continue
         if (strstr(name.c_str(), matcher) == NULL) {
           continue;
         }
       }
       fprintf(stderr, "==== Test %s.%s\n", t.base, t.name);
+      // YW - exec the _RunIt() and the actual all _Run()
       (*t.func)();
       ++num;
     }
@@ -64,6 +69,7 @@ std::string TmpDir() {
   return dir;
 }
 
+// YW - get the TEST_RANDOM_SEED env variable, if not exist then return 301
 int RandomSeed() {
   const char* env = getenv("TEST_RANDOM_SEED");
   int result = (env != NULL ? atoi(env) : 301);

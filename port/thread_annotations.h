@@ -9,6 +9,7 @@
 // analysis.  Provide empty definitions of such macros unless they are already
 // defined.
 
+// YW - TODO: understand MARCO
 #ifndef EXCLUSIVE_LOCKS_REQUIRED
 #define EXCLUSIVE_LOCKS_REQUIRED(...)
 #endif

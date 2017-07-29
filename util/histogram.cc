@@ -9,6 +9,7 @@
 
 namespace leveldb {
 
+// YW - this is all the edges of the histgram, not a linear histogram
 const double Histogram::kBucketLimit[kNumBuckets] = {
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40, 45,
   50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 250, 300, 350, 400, 450,
@@ -52,6 +53,7 @@ void Histogram::Add(double value) {
   if (max_ < value) max_ = value;
   num_++;
   sum_ += value;
+  // YW - update the sum of squares for easy calc the std
   sum_squares_ += (value * value);
 }
 
@@ -77,6 +79,7 @@ double Histogram::Percentile(double p) const {
     sum += buckets_[b];
     if (sum >= threshold) {
       // Scale linearly within this bucket
+      // YW - whem locate the percentile is within a bucket, then get the linear appromixation of the percentile within the bucket edges
       double left_point = (b == 0) ? 0 : kBucketLimit[b-1];
       double right_point = kBucketLimit[b];
       double left_sum = sum - buckets_[b];
@@ -96,6 +99,7 @@ double Histogram::Average() const {
   return sum_ / num_;
 }
 
+// YW - calc std can use https://en.wikipedia.org/wiki/Standard_deviation#Definition_of_population_values
 double Histogram::StandardDeviation() const {
   if (num_ == 0.0) return 0;
   double variance = (sum_squares_ * num_ - sum_ * sum_) / (num_ * num_);
@@ -119,6 +123,7 @@ std::string Histogram::ToString() const {
   for (int b = 0; b < kNumBuckets; b++) {
     if (buckets_[b] <= 0.0) continue;
     sum += buckets_[b];
+    // YW - snprintf: A terminating null character is automatically appended after the content written.
     snprintf(buf, sizeof(buf),
              "[ %7.0f, %7.0f ) %7.0f %7.3f%% %7.3f%% ",
              ((b == 0) ? 0.0 : kBucketLimit[b-1]),      // left

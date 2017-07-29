@@ -36,7 +36,7 @@ CondVar::~CondVar() { PthreadCall("destroy cv", pthread_cond_destroy(&cv_)); }
 void CondVar::Wait() {
   PthreadCall("wait", pthread_cond_wait(&cv_, &mu_->mu_));
 }
-
+// YW - notify_one
 void CondVar::Signal() {
   PthreadCall("signal", pthread_cond_signal(&cv_));
 }

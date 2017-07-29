@@ -281,6 +281,7 @@ class Stats {
 };
 
 // State shared by all concurrent executions of the same benchmark.
+// YW - SharedState is the mutex lock and only have one instance across all the thread
 struct SharedState {
   port::Mutex mu;
   port::CondVar cv;
@@ -316,6 +317,7 @@ struct ThreadState {
 
 class Benchmark {
  private:
+  // YW - a LRUcache
   Cache* cache_;
   const FilterPolicy* filter_policy_;
   DB* db_;
@@ -954,6 +956,7 @@ class Benchmark {
 }  // namespace leveldb
 
 int main(int argc, char** argv) {
+  // YW - default args from options.cc
   FLAGS_write_buffer_size = leveldb::Options().write_buffer_size;
   FLAGS_max_file_size = leveldb::Options().max_file_size;
   FLAGS_block_size = leveldb::Options().block_size;

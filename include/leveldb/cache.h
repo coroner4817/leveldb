@@ -27,8 +27,10 @@ class Cache;
 
 // Create a new cache with a fixed size capacity.  This implementation
 // of Cache uses a least-recently-used eviction policy.
+// YW - based on my view this extern is useless
 extern Cache* NewLRUCache(size_t capacity);
 
+// YW - abstract cache class
 class Cache {
  public:
   Cache() { }
@@ -38,6 +40,9 @@ class Cache {
   virtual ~Cache();
 
   // Opaque handle to an entry stored in the cache.
+  // YW - this is like a void* pointer of struct, you can cast any struct pointer to this Handle* or cast then backward
+  // you can even cast it upward(with more fields) or downward(with less field)
+  // But you cannot cast an other struct instance to this Handle instance, only pointer works
   struct Handle { };
 
   // Insert a mapping from key->value into the cache and assign it
@@ -91,6 +96,9 @@ class Cache {
   // Return an estimate of the combined charges of all elements stored in the
   // cache.
   virtual size_t TotalCharge() const = 0;
+
+  // YW - custom debug function
+  virtual void ShowTable() const {};
 
  private:
   void LRU_Remove(Handle* e);

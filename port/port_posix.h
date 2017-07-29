@@ -11,6 +11,7 @@
 #if defined(OS_MACOSX)
   #include <machine/endian.h>
   #if defined(__DARWIN_LITTLE_ENDIAN) && defined(__DARWIN_BYTE_ORDER)
+    // YW - if BYTE_ORDER = LITTLE_ENDIAN then set to true
     #define PLATFORM_IS_LITTLE_ENDIAN \
         (__DARWIN_BYTE_ORDER == __DARWIN_LITTLE_ENDIAN)
   #endif
@@ -77,8 +78,11 @@ namespace port {
 static const bool kLittleEndian = PLATFORM_IS_LITTLE_ENDIAN;
 #undef PLATFORM_IS_LITTLE_ENDIAN
 
+// YW - forward declaration in order to add friend class
 class CondVar;
 
+// YW - Mutex and CondVar are two wrapper of the original pthread mutex and condition_variable
+// We can use c++11 std::mutex and std::condition_var as a higher level wrapper
 class Mutex {
  public:
   Mutex();
@@ -89,6 +93,7 @@ class Mutex {
   void AssertHeld() { }
 
  private:
+  // YW - Mutex class declare CondVar as a friend class so that inside CondVar can access mu_ private functions
   friend class CondVar;
   pthread_mutex_t mu_;
 

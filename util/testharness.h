@@ -27,6 +27,9 @@ namespace test {
 //
 // Returns 0 if all tests pass.
 // Dies or returns a non-zero value if some test fails.
+
+// YW - functions in headers doesn't need to be declares with extern identifier
+// they are automatically considered as extern by the compiler, so here is useless
 extern int RunAllTests();
 
 // Return the directory to use for temporary storage.
@@ -58,6 +61,7 @@ class Tester {
     }
   }
 
+  // YW - return a rvalue of the Tester class instance
   Tester& Is(bool b, const char* msg) {
     if (!b) {
       ss_ << " Assertion failure " << msg;
@@ -74,6 +78,7 @@ class Tester {
     return *this;
   }
 
+// YW - #op is to access the parameter's value in const char* format
 #define BINARY_OP(name,op)                              \
   template <class X, class Y>                           \
   Tester& name(const X& x, const Y& y) {                \
@@ -84,12 +89,18 @@ class Tester {
     return *this;                                       \
   }
 
+  // YW - need to run these funcs help Tester class declare multiple funcs 
+  // this a better practice than using function pointer
+  // but notice that this is not type safe, not gurantee have same type of x and y
+  // can use g++ -E for show the MARCO replacement, -E is preprocess not compiled
   BINARY_OP(IsEq, ==)
   BINARY_OP(IsNe, !=)
   BINARY_OP(IsGe, >=)
   BINARY_OP(IsGt, >)
   BINARY_OP(IsLe, <=)
   BINARY_OP(IsLt, <)
+
+// YW - undefine to avoid the insert function leakage issue
 #undef BINARY_OP
 
   // Attach the specified value to the error message if an error has occurred
@@ -102,6 +113,7 @@ class Tester {
   }
 };
 
+// YW - wrapper of the Tester class
 #define ASSERT_TRUE(c) ::leveldb::test::Tester(__FILE__, __LINE__).Is((c), #c)
 #define ASSERT_OK(s) ::leveldb::test::Tester(__FILE__, __LINE__).IsOk((s))
 #define ASSERT_EQ(a,b) ::leveldb::test::Tester(__FILE__, __LINE__).IsEq((a),(b))
@@ -112,8 +124,20 @@ class Tester {
 #define ASSERT_LT(a,b) ::leveldb::test::Tester(__FILE__, __LINE__).IsLt((a),(b))
 
 #define TCONCAT(a,b) TCONCAT1(a,b)
+// YW - ## in MARCO means concatenate two string together
+// http://www.cprogramming.com/reference/preprocessor/token-pasting-operator.html
 #define TCONCAT1(a,b) a##b
 
+// YW - define a unique name class: _TEST_name
+// NOTICE! after _Run() there is no semicolon ; following!!!!!
+// This is because the _Run is actually definited when calling TEST MARCO like
+// TEST(lol, bs){
+//   cout << "shit" << endl;
+// }
+// _Run is actually definited as the content within the {}, so there must be no ;
+// RegisterTest: register the TEST to the test vector on the static memory, each TEST only reg once
+// it's actual call _Run() is definited later, so here only register the func pointer!
+// this is happened at compiling time
 #define TEST(base,name)                                                 \
 class TCONCAT(_Test_,name) : public base {                              \
  public:                                                                \

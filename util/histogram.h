@@ -11,7 +11,8 @@ namespace leveldb {
 
 class Histogram {
  public:
-  Histogram() { }
+  // YW - need to reset all the stats before start
+  Histogram() { Clear(); }
   ~Histogram() { }
 
   void Clear();
@@ -28,6 +29,10 @@ class Histogram {
   double sum_squares_;
 
   enum { kNumBuckets = 154 };
+  // YW - static class member only have one copy in the static memory no matter how many times you declare the class instance
+  // Access through Histogram::kBucketLimit
+  // The static class member must be initlized out of line, 
+  // When have a static class variable, when initilize it must remove the static identifier, like this example
   static const double kBucketLimit[kNumBuckets];
   double buckets_[kNumBuckets];
 

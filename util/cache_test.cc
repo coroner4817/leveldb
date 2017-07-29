@@ -3,7 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "leveldb/cache.h"
-
+#include <iostream>
 #include <vector>
 #include "util/coding.h"
 #include "util/testharness.h"
@@ -11,6 +11,7 @@
 namespace leveldb {
 
 // Conversions between numeric keys/values and the types expected by Cache.
+// YW - encode or decode the key(Slice), base on little endian or big endian
 static std::string EncodeKey(int k) {
   std::string result;
   PutFixed32(&result, k);
@@ -20,13 +21,17 @@ static int DecodeKey(const Slice& k) {
   assert(k.size() == 4);
   return DecodeFixed32(k.data());
 }
+// YW - reinterpret_cast the uintptr_t int to void*, is this means that we can reinterpret_cast anything to anything?
 static void* EncodeValue(uintptr_t v) { return reinterpret_cast<void*>(v); }
 static int DecodeValue(void* v) { return reinterpret_cast<uintptr_t>(v); }
 
 class CacheTest {
  public:
+  // YW - TODO: understand why this singleton design pattern is here while we actuall have multiple instance of this class
   static CacheTest* current_;
 
+  // YW - deleter here is just push to vector, for test deleter only
+  // deleted_* vectors are not static, so that they are not shared by all the _TEST_name, each one hold their own deleted_* vector
   static void Deleter(const Slice& key, void* v) {
     current_->deleted_keys_.push_back(DecodeKey(key));
     current_->deleted_values_.push_back(DecodeValue(v));
@@ -37,6 +42,7 @@ class CacheTest {
   std::vector<int> deleted_values_;
   Cache* cache_;
 
+  // YW - initilize current_ to this;
   CacheTest() : cache_(NewLRUCache(kCacheSize)) {
     current_ = this;
   }
@@ -67,12 +73,21 @@ class CacheTest {
   void Erase(int key) {
     cache_->Erase(EncodeKey(key));
   }
+
+  void ShowTable() const{
+    cache_->ShowTable();
+  }
 };
+// YW - declare this so that we can invoke the CacheTest constructor, then we can get current_ initialized in the static memory 
+// Global static pointer used to ensure a single instance of the class.
 CacheTest* CacheTest::current_;
 
+// YW - every test use its own CacheTest instance, this because everytime we will declare a derived _TEST_name class
+// everytime we will initilize a NewLRUCache
 TEST(CacheTest, HitAndMiss) {
   ASSERT_EQ(-1, Lookup(100));
 
+  // YW - calling base class method, doesn't need to be Base::Insert();
   Insert(100, 101);
   ASSERT_EQ(101, Lookup(100));
   ASSERT_EQ(-1,  Lookup(200));
@@ -88,12 +103,20 @@ TEST(CacheTest, HitAndMiss) {
   ASSERT_EQ(201, Lookup(200));
   ASSERT_EQ(-1,  Lookup(300));
 
+  // YW - only have one replacement so the delete count is 1
   ASSERT_EQ(1, deleted_keys_.size());
   ASSERT_EQ(100, deleted_keys_[0]);
   ASSERT_EQ(101, deleted_values_[0]);
+
+  // YW - at end of this scope, the CacheTest instance is destoried, so that the cache_ is destoried, so the deconstructor was called
+  // so at this time there should be three entries in the deleted_* vectors, but since deleted_* is not static so they are also released afterward 
 }
 
 TEST(CacheTest, Erase) {
+  // YW - Notice that there is no key=200 in the cache now (Lookup(200)=-1), Erase(200) do nothing here
+  // so ShowTable() here shows empty cache, also deleted_keys_ is empty at this time, reason check 5 lines above
+  // ShowTable();
+  // ASSERT_EQ(0, deleted_keys_.size());
   Erase(200);
   ASSERT_EQ(0, deleted_keys_.size());
 
@@ -114,7 +137,9 @@ TEST(CacheTest, Erase) {
 
 TEST(CacheTest, EntriesArePinned) {
   Insert(100, 101);
+  // (100)->refs = 1, due to there is a release at Insert()!
   Cache::Handle* h1 = cache_->Lookup(EncodeKey(100));
+  // (100)->refs = 2
   ASSERT_EQ(101, DecodeValue(cache_->Value(h1)));
 
   Insert(100, 102);
@@ -135,6 +160,23 @@ TEST(CacheTest, EntriesArePinned) {
   ASSERT_EQ(2, deleted_keys_.size());
   ASSERT_EQ(100, deleted_keys_[1]);
   ASSERT_EQ(102, deleted_values_[1]);
+}
+
+TEST(CacheTest, YWEraseTest){
+  Insert(100, 101);
+  // ShowTable(); // refs = 1
+  Cache::Handle* h1 = cache_->Lookup(EncodeKey(100));
+  // ShowTable(); // refs = 2
+  Cache::Handle* h2 = cache_->Lookup(EncodeKey(100));
+  // ShowTable(); // refs = 3
+  cache_->Release(h1);
+  // ShowTable(); // refs = 2
+  cache_->Release(h2);
+  // ShowTable(); // refs = 1
+  cache_->Release(h2); // delete memory
+  // ShowTable(); // refs = 0, value cannot be accessed
+
+  ASSERT_EQ(1, deleted_keys_.size());
 }
 
 TEST(CacheTest, EvictionPolicy) {

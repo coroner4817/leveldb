@@ -9,6 +9,7 @@
 // The FALLTHROUGH_INTENDED macro can be used to annotate implicit fall-through
 // between switch labels. The real definition should be provided externally.
 // This one is a fallback version for unsupported compilers.
+// YW - To avoid after exec case 1 then goto case 2 in switch, usually should use break; 
 #ifndef FALLTHROUGH_INTENDED
 #define FALLTHROUGH_INTENDED do { } while (0)
 #endif
@@ -32,6 +33,7 @@ uint32_t Hash(const char* data, size_t n, uint32_t seed) {
   }
 
   // Pick up remaining bytes
+  // YW - remianing less than 4
   switch (limit - data) {
     case 3:
       h += static_cast<unsigned char>(data[2]) << 16;

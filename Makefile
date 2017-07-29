@@ -163,6 +163,11 @@ check: $(STATIC_PROGRAMS)
 
 bench: $(STATIC_OUTDIR)/db_bench_sqlite3 $(STATIC_OUTDIR)/db_bench
 
+test: $(STATIC_OUTDIR)/cache_test
+
+debug: 
+	@echo $(CXXFLAGS)
+
 clean:
 	-rm -rf out-static out-shared out-ios-x86 out-ios-arm out-ios-universal
 	-rm -f build_config.mk
@@ -433,6 +438,12 @@ $(SIMULATOR_OUTDIR)/%.o: %.c
 $(DEVICE_OUTDIR)/%.o: %.c
 	xcrun -sdk iphoneos $(CC) $(CFLAGS) $(DEVICE_CFLAGS) -c $< -o $@
 
+# YW - % is the wild match for Makefile explicitly, like * for regex
+# this .o object file is depends on %.cc file
+# use -c to output the .o file
+# $@ is the object name
+# $< is the first dependence's name
+# $^ is all the dependences' name
 $(STATIC_OUTDIR)/%.o: %.cc
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
