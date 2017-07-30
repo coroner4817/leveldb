@@ -3,8 +3,11 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "leveldb/cache.h"
-#include <iostream>
+
 #include <vector>
+#include <thread>
+#include <mutex>
+#include <iostream>
 #include "util/coding.h"
 #include "util/testharness.h"
 
@@ -50,7 +53,7 @@ class CacheTest {
   ~CacheTest() {
     delete cache_;
   }
-
+  // YW - this is a release handle lookup so the refs is not increased
   int Lookup(int key) {
     Cache::Handle* handle = cache_->Lookup(EncodeKey(key));
     const int r = (handle == NULL) ? -1 : DecodeValue(cache_->Value(handle));
@@ -60,11 +63,13 @@ class CacheTest {
     return r;
   }
 
+  // YW - do an extra release so the refs after is 1, here we don't want to hold a handle after insert so the refs is 1
   void Insert(int key, int value, int charge = 1) {
     cache_->Release(cache_->Insert(EncodeKey(key), EncodeValue(value), charge,
                                    &CacheTest::Deleter));
   }
 
+  // YW - refs afterward is 2, because we hold a handle
   Cache::Handle* InsertAndReturnHandle(int key, int value, int charge = 1) {
     return cache_->Insert(EncodeKey(key), EncodeValue(value), charge,
                           &CacheTest::Deleter);
@@ -76,6 +81,14 @@ class CacheTest {
 
   void ShowTable() const{
     cache_->ShowTable();
+  }
+
+  void Prune(){
+    cache_->Prune();
+  }
+
+  void ShowCacheListSize() const{
+    cache_->ShowCacheListSize(); 
   }
 };
 // YW - declare this so that we can invoke the CacheTest constructor, then we can get current_ initialized in the static memory 
@@ -152,10 +165,12 @@ TEST(CacheTest, EntriesArePinned) {
   ASSERT_EQ(100, deleted_keys_[0]);
   ASSERT_EQ(101, deleted_values_[0]);
 
+  // YW - not actual delete due to the refs is 2 here, so just act as a release
   Erase(100);
   ASSERT_EQ(-1, Lookup(100));
   ASSERT_EQ(1, deleted_keys_.size());
 
+  // YW - at here we delete h2
   cache_->Release(h2);
   ASSERT_EQ(2, deleted_keys_.size());
   ASSERT_EQ(100, deleted_keys_[1]);
@@ -173,9 +188,9 @@ TEST(CacheTest, YWEraseTest){
   // ShowTable(); // refs = 2
   cache_->Release(h2);
   // ShowTable(); // refs = 1
-  cache_->Release(h2); // delete memory
-  // ShowTable(); // refs = 0, value cannot be accessed
 
+  // YW - when refs = 1 we can safely delete it now
+  Erase(100);
   ASSERT_EQ(1, deleted_keys_.size());
 }
 
@@ -196,6 +211,8 @@ TEST(CacheTest, EvictionPolicy) {
   ASSERT_EQ(-1, Lookup(200));
   ASSERT_EQ(301, Lookup(300));
   cache_->Release(h);
+  // YW - after this the key=300's refs is 1 still not deleted, but we must do a release here or the LRUCache deconstructor throw assert error
+  // all the storage will be deleted when cache deconstructor is called
 }
 
 TEST(CacheTest, UseExceedsCacheSize) {
@@ -204,11 +221,36 @@ TEST(CacheTest, UseExceedsCacheSize) {
   for (int i = 0; i < kCacheSize + 100; i++) {
     h.push_back(InsertAndReturnHandle(1000+i, 2000+i));
   }
+  // YW - notice after InsertAndReturnHandle all the 1100 inserted item's refs is 2, and they are on in_use_
+  // However when use Insert, all the item will be push into lru_ due to have one release op
+  // When overfill happened, they will not be deleted but push to lru_ list due to lru_ is empty
+  // lru_ only be clear when prune() is called 
+  // ShowCacheListSize();
 
   // Check that all the entries can be found in the cache.
   for (int i = 0; i < h.size(); i++) {
     ASSERT_EQ(2000+i, Lookup(1000+i));
   }
+
+  for (int i = 0; i < h.size(); i++) {
+    cache_->Release(h[i]);
+  }
+}
+
+TEST(CacheTest, YWExceedCacheSize){
+  std::vector<Cache::Handle*> h;
+  for (int i = 0; i < kCacheSize + 100; i++) {
+    h.push_back(InsertAndReturnHandle(0+i, 2000+i));
+  }
+
+  // YW - the second Insert has less refs due to not return a handle
+  // So when the size of the usage_ larger than capacity, all of this insert goto lru_ and then size of lru_ is always around 1
+  for(int i=0;i<kCacheSize+100;i++){
+    Insert(1200+i, 2000+i);
+  }
+
+  // ShowCacheListSize();
+  // ShowTable();
 
   for (int i = 0; i < h.size(); i++) {
     cache_->Release(h[i]);
@@ -224,6 +266,7 @@ TEST(CacheTest, HeavyEntries) {
   int added = 0;
   int index = 0;
   while (added < 2*kCacheSize) {
+    // YW - 50% of entry is heavy
     const int weight = (index & 1) ? kLight : kHeavy;
     Insert(index, 1000+index, weight);
     added += weight;
@@ -254,11 +297,68 @@ TEST(CacheTest, Prune) {
 
   Cache::Handle* handle = cache_->Lookup(EncodeKey(1));
   ASSERT_TRUE(handle);
+  // YW - prune only delete key=2
   cache_->Prune();
   cache_->Release(handle);
 
   ASSERT_EQ(100, Lookup(1));
   ASSERT_EQ(-1, Lookup(2));
+}
+
+// YW - Worker will increse each key's value by one
+// need have a lock here due to although all those funcs like Lookup and Insert they have mutex lock inside 
+// but they will release the lock after the function call, while the worker required everything exec in sequence together
+// so here we need a lock; 
+// or we need to use the condition_variable to syn each step
+void worker1(int key, CacheTest* ct, std::mutex& m_mutex){
+  std::lock_guard<std::mutex> lk(m_mutex);
+  Cache::Handle* handle = ct->cache_->Lookup(EncodeKey(key));
+  ASSERT_TRUE(handle);
+  ct->Insert(key, DecodeValue(ct->cache_->Value(handle)) + 1);
+  ct->cache_->Release(handle);
+}
+
+TEST(CacheTest, YWMultiThread1){
+  std::mutex m_mutex;
+  const int KEY_ = 100;
+  Insert(KEY_, 0);
+  const int TEST_THREADS_ = 100;
+
+  std::vector<std::thread> v_;
+  for(int i=0;i<TEST_THREADS_;++i){
+    std::thread tmp(worker1, KEY_, this, std::ref(m_mutex));
+    v_.push_back(std::move(tmp));
+  }
+
+  for(int i=0;i<v_.size();++i){
+    v_[i].join();
+  }
+
+  ASSERT_EQ(100, Lookup(KEY_));
+}
+
+void worker2(int key, int value, CacheTest* ct){
+  ct->Insert(key, value);
+  // print at the insert to see the actual insert sequence 
+  // there is no missing in the sequence so the mutex lock in each func works
+}
+
+TEST(CacheTest, YWMultiThread2){
+  const int KEY_ = 100;
+  Insert(KEY_, 0);
+  const int TEST_THREADS_ = 100;
+
+  std::vector<std::thread> v_;
+  for(int i=0;i<TEST_THREADS_;++i){
+    std::thread tmp(worker2, KEY_, i, this);
+    v_.push_back(std::move(tmp));
+  }
+
+  for(int i=0;i<v_.size();++i){
+    v_[i].join();
+  }
+
+  ASSERT_GE(99, Lookup(KEY_));
 }
 
 }  // namespace leveldb

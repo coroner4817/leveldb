@@ -99,6 +99,7 @@ class Cache {
 
   // YW - custom debug function
   virtual void ShowTable() const {};
+  virtual void ShowCacheListSize() const {};
 
  private:
   void LRU_Remove(Handle* e);

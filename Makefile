@@ -8,9 +8,9 @@
 
 # (A) Production use (optimized mode)
 # YW - ?= will assign value to OPT only when OPT is NULL
-OPT ?= -O2 -DNDEBUG
+# OPT ?= -O2 -DNDEBUG
 # (B) Debug mode, w/ full line-level debugging symbols
-# OPT ?= -g2
+OPT ?= -g2
 # (C) Profiling mode: opt, but w/debugging symbols
 # OPT ?= -O2 -g2 -DNDEBUG
 #-----------------------------------------------

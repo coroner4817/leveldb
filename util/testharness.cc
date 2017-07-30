@@ -18,7 +18,8 @@ struct Test {
   const char* name;
   void (*func)();
 };
-// YW - std::vector pointer, pointer is static memory but the content is on TODO: heap?
+// YW - std::vector pointer is static memory but the content is on TODO: heap?
+// all the content has been push to vector at compile time
 // and when program died at end the static vector pointer is deconstructed, the content will also automatically released
 std::vector<Test>* tests;
 }

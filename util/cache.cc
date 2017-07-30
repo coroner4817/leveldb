@@ -238,8 +238,27 @@ class LRUCache {
     return usage_;
   }
   void ShowTable() const{
+    MutexLock l(&mutex_);
     table_.ToString();
   };
+
+  const size_t GetListSize(const LRUHandle* list) const{
+    MutexLock l(&mutex_);
+    LRUHandle* tmp = list->next;
+    size_t ret = 0;
+    while(tmp!=list){
+      ret++;
+      tmp = tmp->next;
+    }
+    return ret;
+  };
+
+  const size_t Get_in_use_size() const{
+    return GetListSize(&in_use_);
+  }
+  const size_t Get_lru_size() const{
+    return GetListSize(&lru_);
+  }
 
  private:
   void LRU_Remove(LRUHandle* e);
@@ -249,6 +268,7 @@ class LRUCache {
   bool FinishErase(LRUHandle* e);
 
   // Initialized before use.
+  // YW - the capacity of the whole cache, 
   size_t capacity_;
 
   // mutex_ protects the following state.
@@ -285,6 +305,8 @@ LRUCache::LRUCache()
 
 LRUCache::~LRUCache() {
   // YW - when deconstruct, all the storage in the in_use_ must have been released and left dummy head only
+  // This means that all the stroage's refs must be 1, so we must do a release of the lookup handle which will lead the strogae transfer to in_use_
+  // if we don't manually released them it throws assert error
   assert(in_use_.next == &in_use_);  // Error if caller has an unreleased handle
   // YW - release all the storage in the normal lru_ list
   for (LRUHandle* e = lru_.next; e != &lru_; ) {
@@ -364,7 +386,7 @@ Cache::Handle* LRUCache::Insert(
     const Slice& key, uint32_t hash, void* value, size_t charge,
     void (*deleter)(const Slice& key, void* value)) {
   MutexLock l(&mutex_);
-
+  
   // YW - minus 1 because minus the sizeof char key_data[1]
   LRUHandle* e = reinterpret_cast<LRUHandle*>(
       malloc(sizeof(LRUHandle)-1 + key.size()));
@@ -380,6 +402,7 @@ Cache::Handle* LRUCache::Insert(
   if (capacity_ > 0) {
     e->refs++;  // for the cache's reference.
     e->in_cache = true;
+    // YW - every insert first in in_use_ list then move to lru_ if necessary
     LRU_Append(&in_use_, e);
     usage_ += charge;
     // YW - release the old handle if the insert is a replacement
@@ -387,6 +410,8 @@ Cache::Handle* LRUCache::Insert(
   } // else don't cache.  (Tests use capacity_==0 to turn off caching.)
 
   // YW - delete lru back when exceed capacity
+  // Notice lru_ is only set to use if it's size is not 0, so we need to manually do a release so that the lru_ list will be used
+  // otherwise all the exceed items will still write in in_use_
   while (usage_ > capacity_ && lru_.next != &lru_) {
     // YW - lru_.next is the oldest entry and prev is the newest entry
     LRUHandle* old = lru_.next;
@@ -417,6 +442,7 @@ void LRUCache::Erase(const Slice& key, uint32_t hash) {
   FinishErase(table_.Remove(key, hash));
 }
 
+// YW - delete everything in the lru_
 void LRUCache::Prune() {
   MutexLock l(&mutex_);
   while (lru_.next != &lru_) {
@@ -496,10 +522,19 @@ class ShardedLRUCache : public Cache {
     return total;
   }
 
-  virtual void ShowTable() const {
+  void ShowTable() const {
     std::cout << "+-+-+-+-Showing Table for Cache-+-+-+-+" << std::endl;
     for(int s=0;s<kNumShards;++s){
       shard_[s].ShowTable();
+    }
+  }
+
+  void ShowCacheListSize() const{
+    std::cout << "+-+-+-+-Showing Cache List Size-+-+-+-+" << std::endl;
+    for(int s=0;s<kNumShards;++s){
+      std::cout << "Shard_: " << s << std::endl;
+      std::cout << "in_use_ size: " << shard_[s].Get_in_use_size() << std::endl;
+      std::cout << "lru_ size: " << shard_[s].Get_lru_size() << std::endl;
     }
   }
 };
