@@ -46,6 +46,8 @@ class BloomTest {
       key_slices.push_back(Slice(keys_[i]));
     }
     filter_.clear();
+    // YW - magic pointer! for vector we can use the first elem's addr as the pointer of the vector array
+    // This means that for vector, the actual storage in the memory is continuous
     policy_->CreateFilter(&key_slices[0], static_cast<int>(key_slices.size()),
                           &filter_);
     keys_.clear();
@@ -56,6 +58,7 @@ class BloomTest {
     return filter_.size();
   }
 
+  // YW - print the filter
   void DumpFilter() {
     fprintf(stderr, "F(");
     for (size_t i = 0; i+1 < filter_.size(); i++) {
@@ -78,6 +81,7 @@ class BloomTest {
     char buffer[sizeof(int)];
     int result = 0;
     for (int i = 0; i < 10000; i++) {
+      // YW - generate some no exist keys
       if (Matches(Key(i + 1000000000, buffer))) {
         result++;
       }

@@ -9,7 +9,7 @@
 // The FALLTHROUGH_INTENDED macro can be used to annotate implicit fall-through
 // between switch labels. The real definition should be provided externally.
 // This one is a fallback version for unsupported compilers.
-// YW - To avoid after exec case 1 then goto case 2 in switch, usually should use break; 
+// YW - to force switch goto next case when finish, use this because some compiler might optimize this feature out
 #ifndef FALLTHROUGH_INTENDED
 #define FALLTHROUGH_INTENDED do { } while (0)
 #endif

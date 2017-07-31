@@ -22,6 +22,7 @@ namespace leveldb {
 
 class Slice;
 
+// YW - abstruct class Fliter policy class, checkout bloom.cc
 class FilterPolicy {
  public:
   virtual ~FilterPolicy();

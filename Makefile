@@ -163,7 +163,7 @@ check: $(STATIC_PROGRAMS)
 
 bench: $(STATIC_OUTDIR)/db_bench_sqlite3 $(STATIC_OUTDIR)/db_bench
 
-test: $(STATIC_OUTDIR)/cache_test
+test: $(STATIC_OUTDIR)/bloom_test
 
 debug: 
 	@echo $(CXXFLAGS)
