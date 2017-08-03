@@ -662,6 +662,7 @@ void PosixEnv::BGThread() {
 }
 
 namespace {
+// YW - util wrapper for generally invoking a thread
 struct StartThreadState {
   void (*user_function)(void*);
   void* arg;
@@ -669,6 +670,7 @@ struct StartThreadState {
 }
 static void* StartThreadWrapper(void* arg) {
   StartThreadState* state = reinterpret_cast<StartThreadState*>(arg);
+  // YW - call the ThreadBody here
   state->user_function(state->arg);
   delete state;
   return NULL;

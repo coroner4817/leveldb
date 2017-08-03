@@ -201,8 +201,11 @@ struct WriteOptions {
   // system call followed by "fsync()".
   //
   // Default: false
-  bool sync;
 
+  // YW - if is true then first write the data to the disk buffer (fsync) then flush to the database, kind of like WAL of sqlite3
+  // if is false directly write to the database
+  bool sync;
+  
   WriteOptions()
       : sync(false) {
   }

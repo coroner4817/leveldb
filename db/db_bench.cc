@@ -317,7 +317,6 @@ struct ThreadState {
 
 class Benchmark {
  private:
-  // YW - a LRUcache
   Cache* cache_;
   const FilterPolicy* filter_policy_;
   DB* db_;
@@ -455,6 +454,7 @@ class Benchmark {
       entries_per_batch_ = 1;
       write_options_ = WriteOptions();
 
+      // YW - set the bench function pointer to NULL
       void (Benchmark::*method)(ThreadState*) = NULL;
       bool fresh_db = false;
       int num_threads = FLAGS_threads;
@@ -544,6 +544,7 @@ class Benchmark {
       }
 
       if (method != NULL) {
+        // YW - actual func call
         RunBenchmark(num_threads, name, method);
       }
     }
@@ -557,21 +558,30 @@ class Benchmark {
     void (Benchmark::*method)(ThreadState*);
   };
 
+  // YW - this is actual call of a exec thread, this is a routine function so is shared with all method's thread
   static void ThreadBody(void* v) {
     ThreadArg* arg = reinterpret_cast<ThreadArg*>(v);
     SharedState* shared = arg->shared;
     ThreadState* thread = arg->thread;
     {
+      // YW - here since all thread is modifying the shared object
+      // we need to use mutex to let them modify one by one, same for the final num_done section
       MutexLock l(&shared->mu);
       shared->num_initialized++;
       if (shared->num_initialized >= shared->total) {
+        // YW - after last thread is initialized, notify the main thread
+        // since here we don't have any lambda experssion, the only cv.wait at this point is the main thread
+        // so that main thread cv.wait directly return
         shared->cv.SignalAll();
       }
+      // YW - all thread waits here for the start signal from the main thread
+      // and at this moment, all the thread has unlock the mutex, so that main thread can lock the mutex
       while (!shared->start) {
         shared->cv.Wait();
       }
     }
-
+    // YW - the shared->cv.Wait() will return one thread by one thread and then start exec, because the cv.wait need hold a mutex to process, threads will lock and unlock one by one
+    // the exec section can be considered as parallelized
     thread->stats.Start();
     (arg->bm->*(arg->method))(thread);
     thread->stats.Stop();
@@ -585,14 +595,20 @@ class Benchmark {
     }
   }
 
+  // YW - we can access a class member function pointer by using Benchmark::*method
+  // you also need to pass the this pointer so that you can call it later, like (arg->bm->*(arg->method))(thread) in ThreadBody
+  // The bottleneck of this kind of delegate function call is that all function must have the same params
   void RunBenchmark(int n, Slice name,
                     void (Benchmark::*method)(ThreadState*)) {
+    // YW - every bench have its own mutex, but all threads within one bench shared one SharedState
+    // SharedState is the general state of a bench and can be used to sync all threads
     SharedState shared;
     shared.total = n;
     shared.num_initialized = 0;
     shared.num_done = 0;
     shared.start = false;
 
+    // YW - ThreadArg is each thread's state
     ThreadArg* arg = new ThreadArg[n];
     for (int i = 0; i < n; i++) {
       arg[i].bm = this;
@@ -600,19 +616,40 @@ class Benchmark {
       arg[i].shared = &shared;
       arg[i].thread = new ThreadState(i);
       arg[i].thread->shared = &shared;
+      // YW - notice we pass ThreadBody function pointer here
+      // ThreadBody is a delegate execution function for all thread
+      // Here we use ThreadBody because all thread share the same sync routine, so we don't need to write this routine in every method function
       g_env->StartThread(ThreadBody, &arg[i]);
     }
 
+    // YW - the pre-requirst of the condition variable is that it hold a lock
+    // lock means that hold a mutex and here the mutex is for protecting the shared var cv
+    // the bascially functionality of the cv is that is hold a lock and use the lock to control the thread
+    // the modern way to write this is using unique_lock, and when declare unique_lock, it's not locked but later cv.wait will automatically handle it
+    // Notice that mutex lock typically using queue to manage who will acquire the lock, so here we should be safe, the main thread shouldn't acquire before the last thread's start lock
     shared.mu.Lock();
     while (shared.num_initialized < n) {
+      // YW - notice that cv.wait will release the mutex lock, so that other thread can lock the mutex and process
+      // _wait(condition, lock): release lock, put thread to sleep until condition is signaled; when thread wakes up again, re-acquire lock before returning.
       shared.cv.Wait();
     }
+    // YW - now main thread is the lock holder
 
+    // YW - signal all so all thread begin
     shared.start = true;
     shared.cv.SignalAll();
+
+    // YW - wait until all thread finished
+    // Here the cv.wait will unlock mutex first so that the finished lock can be acquired in the threads!
+    // So that we doesn't have any deadlock
+    // Very important: https://web.stanford.edu/class/cs140/cgi-bin/lecture.php?topic=locks
+    // https://stackoverflow.com/questions/2763714/why-do-pthreads-condition-variable-functions-require-a-mutex
     while (shared.num_done < n) {
       shared.cv.Wait();
     }
+    // YW - main thread lock again
+    // The main thread lock three times in above scenerio
+    // also notice that when all small thread is executing, the main thread is in cv.wait, so the main thread is not compete with other thread
     shared.mu.Unlock();
 
     for (int i = 1; i < n; i++) {
