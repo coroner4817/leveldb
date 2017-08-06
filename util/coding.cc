@@ -32,6 +32,7 @@ void EncodeFixed64(char* buf, uint64_t value) {
   }
 }
 
+// YW - always use 4 bytes to storgae the size no matter what's the actual value (may by very small)
 void PutFixed32(std::string* dst, uint32_t value) {
   char buf[sizeof(value)];
   EncodeFixed32(buf, value);
@@ -44,6 +45,9 @@ void PutFixed64(std::string* dst, uint64_t value) {
   dst->append(buf, sizeof(buf));
 }
 
+// YW - encode the size info to the dst, size up most to 2^28
+// here use the B = 128 as a guard, each byte's MSB is always set to 0. Use this we can know when the size buf stop
+// this is because we don't know how many bytes will be used for the size buf, this is more storage efficient in comparison with the fix32 
 char* EncodeVarint32(char* dst, uint32_t v) {
   // Operate on characters as unsigneds
   unsigned char* ptr = reinterpret_cast<unsigned char*>(dst);
@@ -95,6 +99,7 @@ void PutVarint64(std::string* dst, uint64_t v) {
   dst->append(buf, ptr - buf);
 }
 
+// YW - when encoding, put the valid size of the pointer first then concat the data
 void PutLengthPrefixedSlice(std::string* dst, const Slice& value) {
   PutVarint32(dst, value.size());
   dst->append(value.data(), value.size());
@@ -181,6 +186,7 @@ const char* GetLengthPrefixedSlice(const char* p, const char* limit,
 
 bool GetLengthPrefixedSlice(Slice* input, Slice* result) {
   uint32_t len;
+  // YW - GetVarint32 get valid length of the slice 
   if (GetVarint32(input, &len) &&
       input->size() >= len) {
     *result = Slice(input->data(), len);

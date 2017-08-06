@@ -22,9 +22,31 @@ Mutex::Mutex() { PthreadCall("init mutex", pthread_mutex_init(&mu_, NULL)); }
 
 Mutex::~Mutex() { PthreadCall("destroy mutex", pthread_mutex_destroy(&mu_)); }
 
-void Mutex::Lock() { PthreadCall("lock", pthread_mutex_lock(&mu_)); }
+void Mutex::Lock() { 
+  PthreadCall("lock", pthread_mutex_lock(&mu_)); 
+#ifndef NDEBUG
+  self = pthread_self();
+#endif // #ifndef NDEBUG
+}
 
-void Mutex::Unlock() { PthreadCall("unlock", pthread_mutex_unlock(&mu_)); }
+void Mutex::Unlock() { 
+  PthreadCall("unlock", pthread_mutex_unlock(&mu_)); 
+#ifndef NDEBUG
+  self = NULL;
+#endif // #ifndef NDEBUG
+}
+
+void Mutex::PrintHolder(){
+  uint64_t tid = 0;
+  memcpy(&tid, &self, sizeof(tid)>sizeof(self)?sizeof(self):sizeof(tid));
+  fprintf(stdout, "DEBUG::Mutex is hold by tid: 0x%04x\n", tid);
+  unsigned char *ptc = (unsigned char*)(void*)(&self);
+  fprintf(stdout, "DEBUG::Mutex is hold by tid: 0x");
+  for (size_t i=0; i<sizeof(self); i++) {
+    fprintf(stdout, "%02x", (unsigned)(ptc[i]));
+  }
+  fprintf(stdout, "\n");
+}
 
 CondVar::CondVar(Mutex* mu)
     : mu_(mu) {

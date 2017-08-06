@@ -91,6 +91,7 @@ inline const char* GetVarint32Ptr(const char* p,
                                   uint32_t* value) {
   if (p < limit) {
     uint32_t result = *(reinterpret_cast<const unsigned char*>(p));
+    // YW - the 8th bit is 1
     if ((result & 128) == 0) {
       *value = result;
       return p + 1;

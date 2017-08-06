@@ -627,6 +627,7 @@ class Benchmark {
     // the bascially functionality of the cv is that is hold a lock and use the lock to control the thread
     // the modern way to write this is using unique_lock, and when declare unique_lock, it's not locked but later cv.wait will automatically handle it
     // Notice that mutex lock typically using queue to manage who will acquire the lock, so here we should be safe, the main thread shouldn't acquire before the last thread's start lock
+    // even if main thread lock before all small thread has finished increment num_initialized, the cv will still return and release the lock since the condition is not meet
     shared.mu.Lock();
     while (shared.num_initialized < n) {
       // YW - notice that cv.wait will release the mutex lock, so that other thread can lock the mutex and process
@@ -663,6 +664,11 @@ class Benchmark {
     delete[] arg;
   }
 
+  // YW - http://www.cnblogs.com/dacainiao/p/5565046.html
+  // https://stackoverflow.com/questions/42766713/cyclic-redundancy-check-message-starting-with-0
+  // CRC32 is to get the remainder of the XOR divide with a predefined CRC and add the Reminder to the original message as data to send
+  // And at receive part, we do a XOR divide with the predefined CRC and the remainder should be 0
+  // because we add the remainder to eliminate the XOR difference
   void Crc32c(ThreadState* thread) {
     // Checksum about 500MB of data total
     const int size = 4096;
@@ -684,6 +690,12 @@ class Benchmark {
 
   void AcquireLoad(ThreadState* thread) {
     int dummy;
+    // YW - atomic pointer is a lock free pointer, it has similar effect as mutex lock
+    // http://www.parallellabs.com/2010/04/15/atomic-operation-in-multithreaded-application/
+    // the operation to the atomic object is either finished in ONE step or not even start.
+    // This can avoid data racing issue in the multithreading program
+    // atomic operation only apply to up most 64bit data
+    // 开发过程中,对于多线程的情况下,单个基础数据类型的数据共享安全,尽量使用原子操作代替锁机制. 当需要对代码块进行数据安全保护的时候,就需要选择使用锁机制了
     port::AtomicPointer ap(&dummy);
     int count = 0;
     void *ptr = NULL;
@@ -788,6 +800,7 @@ class Benchmark {
     }
 
     RandomGenerator gen;
+    // YW - write batch of data to the db
     WriteBatch batch;
     Status s;
     int64_t bytes = 0;
@@ -981,6 +994,7 @@ class Benchmark {
       fprintf(stderr, "%s\n", s.ToString().c_str());
       return;
     }
+    // YW - not bench this here, because this posix not support
     bool ok = port::GetHeapProfile(WriteToFile, file);
     delete file;
     if (!ok) {

@@ -46,6 +46,9 @@
 namespace leveldb {
 namespace port {
 
+// YW - https://zh.wikipedia.org/wiki/%E5%86%85%E5%AD%98%E5%B1%8F%E9%9A%9C
+// Memory barrier is a mechiasm to avoid instruction reordered, some compiler might compile the code out of order of the code sequence to speed up 
+// This typically means that operations issued prior to the barrier are guaranteed to be performed before operations issued after the barrier
 // Define MemoryBarrier() if available
 // Windows on x86
 #if defined(OS_WIN) && defined(COMPILER_MSVC) && defined(ARCH_CPU_X86_FAMILY)
@@ -121,6 +124,12 @@ inline void MemoryBarrier() {
 
 #endif
 
+// YW - all memory related operation to atomic pointer pointed object is atomic operation
+// atomic operation: either finish in ONE step or not even begin, no context switch within the operation, 
+// and this is optimize at the compile time, not like mutex lock at runtime, which might cause deadlock
+// http://preshing.com/20120625/memory-ordering-at-compile-time/
+// https://stackoverflow.com/questions/31978324/what-exactly-is-stdatomic
+// atomic and memory barrier is subset of lock-free programming 
 // AtomicPointer built using platform-specific MemoryBarrier()
 #if defined(LEVELDB_HAVE_MEMORY_BARRIER)
 class AtomicPointer {
@@ -133,6 +142,8 @@ class AtomicPointer {
   inline void NoBarrier_Store(void* v) { rep_ = v; }
   inline void* Acquire_Load() const {
     void* result = rep_;
+    // YW - add this memory barrier function so that read happen after all the store operation by other thread has finished
+    // this sync is happened at the compile time
     MemoryBarrier();
     return result;
   }
@@ -142,6 +153,15 @@ class AtomicPointer {
   }
 };
 
+// YW - implemented using standard library std::atomic<>
+// Acquire operation: no reads or writes in the current thread can be reordered before this load. 
+//                    All writes in other threads that release the same atomic variable are visible in the current thread 
+// Release operation: no reads or writes in the current thread can be reordered after this store. 
+//                    All writes in the current thread are visible in other threads that acquire the same atomic variable
+// so here what we release or acquire is the out of order compiling, after acquire the memory order, the compiler can do out of order again
+// http://en.cppreference.com/w/cpp/atomic/memory_order#Release-Acquire_ordering
+// In this example, the release - acquire works similar to a mutex, it not only sync the atomic variable but also the thread itself
+// https://www.zhihu.com/question/24301047
 // AtomicPointer based on <cstdatomic>
 #elif defined(LEVELDB_ATOMIC_PRESENT)
 class AtomicPointer {
@@ -156,6 +176,7 @@ class AtomicPointer {
   inline void Release_Store(void* v) {
     rep_.store(v, std::memory_order_release);
   }
+  // YW - memory_order_relaxed means that the code will exec in the code's sequence, so here is no guarantee we can load the latest value 
   inline void* NoBarrier_Load() const {
     return rep_.load(std::memory_order_relaxed);
   }
@@ -230,6 +251,7 @@ class AtomicPointer {
 
 #endif
 
+// YW - undef to avoid define leakage
 #undef LEVELDB_HAVE_MEMORY_BARRIER
 #undef ARCH_CPU_X86_FAMILY
 #undef ARCH_CPU_ARM_FAMILY

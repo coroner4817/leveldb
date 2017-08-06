@@ -91,11 +91,13 @@ class Mutex {
   void Lock();
   void Unlock();
   void AssertHeld() { }
+  void PrintHolder();
 
  private:
   // YW - Mutex class declare CondVar as a friend class so that inside CondVar can access mu_ private functions
   friend class CondVar;
   pthread_mutex_t mu_;
+  pthread_t self;
 
   // No copying
   Mutex(const Mutex&);
